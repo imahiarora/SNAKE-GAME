@@ -1,5 +1,6 @@
 # SNAKE-GAME
-backend code in c laguage 
+**backend code in c laguage **
+
 #include <stdlib.h>
 
 #define WIDTH 60
