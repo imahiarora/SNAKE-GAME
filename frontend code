@@ -1,0 +1,250 @@
+import pygame
+import ctypes
+import sys
+import os
+import random
+
+# ================= INIT =================
+pygame.mixer.pre_init(44100, -16, 2, 512)
+pygame.init()
+pygame.mixer.init()
+
+# ================= C BACKEND =================
+lib = ctypes.CDLL("./libsnake.dylib")
+lib.set_direction.argtypes = [ctypes.c_int]
+lib.update_game.restype = None
+lib.get_length.restype = ctypes.c_int
+lib.get_x.argtypes = [ctypes.c_int]; lib.get_x.restype = ctypes.c_int
+lib.get_y.argtypes = [ctypes.c_int]; lib.get_y.restype = ctypes.c_int
+lib.get_food_x.restype = ctypes.c_int
+lib.get_food_y.restype = ctypes.c_int
+lib.get_score.restype = ctypes.c_int
+lib.is_game_over.restype = ctypes.c_int
+
+# ================= SETTINGS =================
+GRID_W, GRID_H = 60, 40
+CELL = 12
+WIDTH, HEIGHT = GRID_W * CELL, GRID_H * CELL
+FPS = 12
+BASE = os.path.dirname(os.path.abspath(__file__))
+SCORE_FILE = os.path.join(BASE, "scores.txt")
+
+# ================= DISPLAY =================
+screen = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption("SLYTHERIN")
+clock = pygame.time.Clock()
+FONT_BIG = pygame.font.SysFont("Arial Black", 56)
+FONT = pygame.font.SysFont("Arial", 22)
+
+# ================= SOUNDS =================
+def snd(name, vol):
+    s = pygame.mixer.Sound(os.path.join(BASE, "sounds", name))
+    s.set_volume(vol)
+    return s
+
+SND_MOVE = snd("move.wav", 0.15)
+SND_EAT  = snd("eat.wav", 0.6)
+SND_OVER = snd("gameover.wav", 0.8)
+
+# ================= THEMES =================
+THEMES = {
+    "Summer": {"sky": (135,206,235), "ground": (60,179,113), "food": (220,20,60)},
+    "Autumn": {"sky": (250,214,165), "ground": (205,133,63), "food": (178,34,34)},
+    "Christmas": {"sky": (210,235,255), "ground": (245,250,250), "food": (220,20,60)}
+}
+
+SNAKE_SKINS = {
+    "Summer": {"head": (0,90,0), "body": (0,160,0), "tongue": (200,0,0)},
+    "Autumn": {"head": (90,60,20), "body": (140,100,40), "tongue": (180,30,30)},
+    "Christmas": {"head": (0,90,90), "body": (120,200,200), "tongue": (220,40,40)}
+}
+
+SNAKE_BLOCKS = {
+    "Square": 0,
+    "Rounded": 4,
+    "Soft": 8
+}
+
+snow = [(random.randint(0, WIDTH), random.randint(0, HEIGHT)) for _ in range(80)]
+leaves = [(random.randint(0, WIDTH), random.randint(0, HEIGHT)) for _ in range(40)]
+lights = [(x, 30) for x in range(0, WIDTH, 40)]
+
+# ================= SCORE =================
+def save_score(name, score):
+    with open(SCORE_FILE, "a") as f:
+        f.write(f"{name}:{score}\n")
+
+def leaderboard():
+    if not os.path.exists(SCORE_FILE):
+        return []
+    with open(SCORE_FILE) as f:
+        data = [line.strip().split(":") for line in f if ":" in line]
+    data.sort(key=lambda x: int(x[1]), reverse=True)
+    return data[:5]
+
+# ================= FRONT PAGE =================
+def front_page():
+    while True:
+        clock.tick(30)
+        for e in pygame.event.get():
+            if e.type == pygame.QUIT: sys.exit()
+            if e.type == pygame.KEYDOWN: return
+
+        screen.fill((135,206,235))
+        pygame.draw.rect(screen,(60,179,113),(0,HEIGHT//2,WIDTH,HEIGHT))
+        screen.blit(FONT_BIG.render("SLYTHERIN",True,(0,100,0)),(WIDTH//2-160,HEIGHT//2-40))
+        screen.blit(FONT.render("Press any key to start",True,(0,0,0)),(WIDTH//2-120,HEIGHT//2+30))
+        pygame.display.flip()
+
+# ================= ENTER NAME =================
+def enter_name():
+    name=""
+    while True:
+        clock.tick(30)
+        for e in pygame.event.get():
+            if e.type==pygame.QUIT: sys.exit()
+            if e.type==pygame.KEYDOWN:
+                if e.key==pygame.K_RETURN and name: return name
+                elif e.key==pygame.K_BACKSPACE: name=name[:-1]
+                elif e.unicode.isalpha() and len(name)<10:
+                    name+=e.unicode.upper()
+
+        blink=(pygame.time.get_ticks()//400)%2
+        cursor="_" if blink else ""
+        screen.fill((60,160,60))
+        screen.blit(FONT_BIG.render("ENTER NAME",True,(0,0,0)),(WIDTH//2-170,HEIGHT//2-100))
+        screen.blit(FONT.render(name+cursor,True,(0,0,0)),(WIDTH//2-50,HEIGHT//2-30))
+        pygame.display.flip()
+
+# ================= THEME SELECT =================
+def select_theme():
+    names=list(THEMES.keys())
+    i=0
+    while True:
+        clock.tick(30)
+        for e in pygame.event.get():
+            if e.type==pygame.QUIT: sys.exit()
+            if e.type==pygame.KEYDOWN:
+                if e.key==pygame.K_LEFT: i=(i-1)%len(names)
+                if e.key==pygame.K_RIGHT: i=(i+1)%len(names)
+                if e.key==pygame.K_RETURN: return names[i]
+
+        draw_background(names[i])
+        screen.blit(FONT_BIG.render(names[i],True,(0,0,0)),(WIDTH//2-140,60))
+        screen.blit(FONT.render("← → ENTER",True,(0,0,0)),(WIDTH//2-60,HEIGHT-40))
+        pygame.display.flip()
+
+# ================= BLOCK SELECT =================
+def select_block():
+    names=list(SNAKE_BLOCKS.keys())
+    i=0
+    while True:
+        clock.tick(30)
+        for e in pygame.event.get():
+            if e.type==pygame.QUIT: sys.exit()
+            if e.type==pygame.KEYDOWN:
+                if e.key==pygame.K_LEFT: i=(i-1)%len(names)
+                if e.key==pygame.K_RIGHT: i=(i+1)%len(names)
+                if e.key==pygame.K_RETURN: return names[i]
+
+        screen.fill((200,230,200))
+        screen.blit(FONT_BIG.render("SNAKE BLOCK",True,(0,0,0)),(WIDTH//2-220,HEIGHT//2-120))
+        pygame.draw.rect(screen,(0,140,0),(WIDTH//2-30,HEIGHT//2-10,60,60),
+                         border_radius=SNAKE_BLOCKS[names[i]])
+        screen.blit(FONT.render(names[i],True,(0,0,0)),(WIDTH//2-40,HEIGHT//2+70))
+        screen.blit(FONT.render("← → ENTER",True,(0,0,0)),(WIDTH//2-60,HEIGHT-40))
+        pygame.display.flip()
+
+# ================= BACKGROUND =================
+def draw_background(theme):
+    t=THEMES[theme]
+    screen.fill(t["sky"])
+    pygame.draw.rect(screen,t["ground"],(0,HEIGHT//2,WIDTH,HEIGHT))
+    if theme=="Summer":
+        pygame.draw.circle(screen,(255,215,0),(WIDTH-80,80),40)
+    if theme=="Autumn":
+        for i in range(len(leaves)):
+            x,y=leaves[i]; y=(y+2)%HEIGHT; leaves[i]=(x,y)
+            pygame.draw.circle(screen,(165,42,42),(x,y),4)
+    if theme=="Christmas":
+        for i in range(len(snow)):
+            x,y=snow[i]; y=(y+3)%HEIGHT; snow[i]=(x,y)
+            pygame.draw.circle(screen,(255,255,255),(x,y),2)
+        for x,y in lights:
+            pygame.draw.circle(screen,random.choice([(255,0,0),(0,255,0),(255,255,0)]),(x,y),5)
+
+# ================= GAME =================
+def game_loop(player,theme,block):
+    lib.init_game()
+    direction=3
+    pulse=0
+    radius=SNAKE_BLOCKS[block]
+    skin=SNAKE_SKINS[theme]
+
+    while True:
+        clock.tick(FPS)
+        pulse=(pulse+1)%30
+
+        for e in pygame.event.get():
+            if e.type==pygame.QUIT: sys.exit()
+            if e.type==pygame.KEYDOWN:
+                SND_MOVE.play()
+                if e.key==pygame.K_UP and direction!=1: direction=0; lib.set_direction(0)
+                elif e.key==pygame.K_DOWN and direction!=0: direction=1; lib.set_direction(1)
+                elif e.key==pygame.K_LEFT and direction!=3: direction=2; lib.set_direction(2)
+                elif e.key==pygame.K_RIGHT and direction!=2: direction=3; lib.set_direction(3)
+
+        prev=lib.get_score()
+        lib.update_game()
+        if lib.get_score()>prev: SND_EAT.play()
+        if lib.is_game_over():
+            SND_OVER.play()
+            save_score(player,lib.get_score())
+            return
+
+        draw_background(theme)
+        tongue_out=pulse%20<8
+
+        for i in range(lib.get_length()):
+            x=lib.get_x(i)*CELL
+            y=lib.get_y(i)*CELL
+            if i==0:
+                pygame.draw.rect(screen,skin["head"],(x,y,CELL,CELL),border_radius=radius)
+                if tongue_out:
+                    pygame.draw.line(screen,skin["tongue"],(x+CELL,y+CELL//2),(x+CELL+6,y+CELL//2),2)
+            else:
+                pygame.draw.rect(screen,skin["body"],(x,y,CELL,CELL),border_radius=radius)
+
+        fx=lib.get_food_x()*CELL+CELL//2
+        fy=lib.get_food_y()*CELL+CELL//2
+        r=CELL//2+abs(5-pulse//3)
+        pygame.draw.circle(screen,THEMES[theme]["food"],(fx,fy),r)
+
+        screen.blit(FONT.render(f"{player}: {lib.get_score()}",True,(0,0,0)),(10,10))
+        pygame.display.flip()
+
+# ================= LEADERBOARD =================
+def leaderboard_screen():
+    data=leaderboard()
+    while True:
+        clock.tick(30)
+        for e in pygame.event.get():
+            if e.type==pygame.QUIT: sys.exit()
+            if e.type==pygame.KEYDOWN: return
+
+        screen.fill((30,30,30))
+        screen.blit(FONT_BIG.render("LEADERBOARD",True,(255,255,255)),(WIDTH//2-180,40))
+        y=120
+        for n,s in data:
+            screen.blit(FONT.render(f"{n}: {s}",True,(200,200,200)),(WIDTH//2-100,y))
+            y+=30
+        pygame.display.flip()
+
+# ================= MAIN =================
+while True:
+    front_page()
+    name=enter_name()
+    theme=select_theme()
+    block=select_block()
+    game_loop(name,theme,block)
+    leaderboard_screen()
