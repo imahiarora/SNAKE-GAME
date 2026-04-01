@@ -1,0 +1,71 @@
+#include <stdlib.h>
+
+#define WIDTH 60
+#define HEIGHT 40
+#define MAX_LEN 100
+
+typedef struct {
+    int x[MAX_LEN];
+    int y[MAX_LEN];
+    int length;
+    int dir;      // 0=UP,1=DOWN,2=LEFT,3=RIGHT
+    int food_x;
+    int food_y;
+    int score;
+    int game_over;
+} Snake;
+
+Snake s;
+
+void init_game() {
+    s.length = 3;
+    s.x[0] = 10; s.y[0] = 10;
+    s.x[1] = 9;  s.y[1] = 10;
+    s.x[2] = 8;  s.y[2] = 10;
+    s.dir = 3;
+    s.food_x = rand() % WIDTH;
+    s.food_y = rand() % HEIGHT;
+    s.score = 0;
+    s.game_over = 0;
+}
+
+void set_direction(int d) {
+    s.dir = d;
+}
+
+void update_game() {
+    if (s.game_over) return;
+
+    for (int i = s.length; i > 0; i--) {
+        s.x[i] = s.x[i-1];
+        s.y[i] = s.y[i-1];
+    }
+
+    if (s.dir == 0) s.y[0]--;
+    if (s.dir == 1) s.y[0]++;
+    if (s.dir == 2) s.x[0]--;
+    if (s.dir == 3) s.x[0]++;
+
+    if (s.x[0] < 0 || s.y[0] < 0 ||
+        s.x[0] >= WIDTH || s.y[0] >= HEIGHT)
+        s.game_over = 1;
+
+    for (int i = 1; i < s.length; i++)
+        if (s.x[0] == s.x[i] && s.y[0] == s.y[i])
+            s.game_over = 1;
+
+    if (s.x[0] == s.food_x && s.y[0] == s.food_y) {
+        s.length++;
+        s.score += 10;
+        s.food_x = rand() % WIDTH;
+        s.food_y = rand() % HEIGHT;
+    }
+}
+
+int get_length() { return s.length; }
+int get_x(int i) { return s.x[i]; }
+int get_y(int i) { return s.y[i]; }
+int get_food_x() { return s.food_x; }
+int get_food_y() { return s.food_y; }
+int get_score() { return s.score; }
+int is_game_over() { return s.game_over; }
